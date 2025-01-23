@@ -37,11 +37,6 @@ erDiagram
     locations {
         int id PK
         string city
-        string state
-        string country
-        string region
-        point coordinates
-        string timezone
     }
 
     post_locations {
@@ -58,7 +53,6 @@ erDiagram
         decimal min_salary
         decimal max_salary
         string currency
-        string pay_period "yearly/monthly/hourly"
         boolean is_estimated
     }
 
