@@ -1,114 +1,83 @@
--- Companies table to store information about employers
+-- Create companies table
 CREATE TABLE companies (
-    company_id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    industry VARCHAR(100),
-    website VARCHAR(255),
-    glassdoor_rating DECIMAL(3,2),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) UNIQUE NOT NULL,
+    base_url VARCHAR(255) NOT NULL,
+    crawler_type VARCHAR(50) NOT NULL,
+    last_crawl_at TIMESTAMP,
+    crawl_interval_days INTEGER NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE
 );
 
--- Job posts table to store crawled job listings
+-- Create locations table
+CREATE TABLE locations (
+    id SERIAL PRIMARY KEY,
+    city VARCHAR(255) NOT NULL
+);
+
+-- Create job_posts table
 CREATE TABLE job_posts (
-    job_id SERIAL PRIMARY KEY,
-    company_id INTEGER REFERENCES companies(company_id),
+    id SERIAL PRIMARY KEY,
+    company_id INTEGER NOT NULL REFERENCES companies(id),
+    job_reference_id VARCHAR(255) NOT NULL,
     title VARCHAR(255) NOT NULL,
+    department VARCHAR(255),
+    level VARCHAR(100),
+    job_type VARCHAR(100),
+    job_link VARCHAR(2048) NOT NULL,
     description TEXT,
-    location VARCHAR(255),
-    salary_min INTEGER,
-    salary_max INTEGER,
-    currency VARCHAR(3),
-    employment_type VARCHAR(50),
-    experience_level VARCHAR(50),
-    remote_policy VARCHAR(50),
-    original_posting_url TEXT,
-    posting_date DATE,
-    is_active BOOLEAN DEFAULT true,
-    source_platform VARCHAR(50),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    requirements TEXT,
+    raw_data JSONB,
+    first_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    CONSTRAINT unique_job_per_company UNIQUE (company_id, job_reference_id)
 );
 
--- Skills table to track required and desired skills
-CREATE TABLE skills (
-    skill_id SERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL UNIQUE,
-    category VARCHAR(50),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+-- Create post_locations table
+CREATE TABLE post_locations (
+    id SERIAL PRIMARY KEY,
+    job_post_id INTEGER NOT NULL REFERENCES job_posts(id),
+    location_id INTEGER NOT NULL REFERENCES locations(id),
+    is_remote BOOLEAN NOT NULL DEFAULT FALSE,
+    work_type VARCHAR(50) CHECK (work_type IN ('hybrid', 'onsite', 'remote')),
+    CONSTRAINT unique_job_location UNIQUE (job_post_id, location_id)
 );
 
--- Junction table for job posts and required skills
-CREATE TABLE job_skills (
-    job_id INTEGER REFERENCES job_posts(job_id),
-    skill_id INTEGER REFERENCES skills(skill_id),
-    is_required BOOLEAN DEFAULT true,
-    PRIMARY KEY (job_id, skill_id)
+-- Create job_salary_ranges table
+CREATE TABLE job_salary_ranges (
+    id SERIAL PRIMARY KEY,
+    job_post_id INTEGER NOT NULL REFERENCES job_posts(id),
+    min_salary DECIMAL(12,2),
+    max_salary DECIMAL(12,2),
+    currency CHAR(3) NOT NULL,
+    is_estimated BOOLEAN NOT NULL DEFAULT FALSE,
+    CHECK (min_salary <= max_salary),
+    CHECK (min_salary >= 0),
+    CHECK (max_salary >= 0)
 );
 
--- Table to store your applications and their status
-CREATE TABLE applications (
-    application_id SERIAL PRIMARY KEY,
-    job_id INTEGER REFERENCES job_posts(job_id),
+-- Create crawl_logs table
+CREATE TABLE crawl_logs (
+    id SERIAL PRIMARY KEY,
+    company_id INTEGER NOT NULL REFERENCES companies(id),
+    started_at TIMESTAMP NOT NULL,
+    completed_at TIMESTAMP,
     status VARCHAR(50) NOT NULL,
-    applied_date DATE,
-    notes TEXT,
-    next_steps TEXT,
-    priority INTEGER,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    jobs_found INTEGER DEFAULT 0,
+    jobs_new INTEGER DEFAULT 0,
+    jobs_updated INTEGER DEFAULT 0,
+    jobs_deleted INTEGER DEFAULT 0,
+    error_message TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Interview preparation materials
-CREATE TABLE interview_prep (
-    prep_id SERIAL PRIMARY KEY,
-    category VARCHAR(100) NOT NULL,
-    topic VARCHAR(255) NOT NULL,
-    content TEXT,
-    difficulty_level VARCHAR(20),
-    source VARCHAR(255),
-    last_reviewed DATE,
-    confidence_level INTEGER,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Table to store AI agent's analysis results
-CREATE TABLE job_analysis (
-    analysis_id SERIAL PRIMARY KEY,
-    job_id INTEGER REFERENCES job_posts(job_id),
-    analysis_type VARCHAR(50),
-    content TEXT,
-    sentiment_score DECIMAL(3,2),
-    keyword_matches JSON,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Triggers to update the updated_at timestamp
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = CURRENT_TIMESTAMP;
-    RETURN NEW;
-END;
-$$ language 'plpgsql';
-
-CREATE TRIGGER update_companies_updated_at
-    BEFORE UPDATE ON companies
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_job_posts_updated_at
-    BEFORE UPDATE ON job_posts
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_applications_updated_at
-    BEFORE UPDATE ON applications
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_interview_prep_updated_at
-    BEFORE UPDATE ON interview_prep
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+-- Create indexes for foreign keys and commonly queried fields
+CREATE INDEX idx_job_posts_company_id ON job_posts(company_id);
+CREATE INDEX idx_post_locations_job_post_id ON post_locations(job_post_id);
+CREATE INDEX idx_post_locations_location_id ON post_locations(location_id);
+CREATE INDEX idx_job_salary_ranges_job_post_id ON job_salary_ranges(job_post_id);
+CREATE INDEX idx_crawl_logs_company_id ON crawl_logs(company_id);
+CREATE INDEX idx_job_posts_is_active ON job_posts(is_active);
+CREATE INDEX idx_companies_is_active ON companies(is_active);
